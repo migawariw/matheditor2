@@ -41,6 +41,7 @@ button{cursor:pointer;}
   background:linear-gradient(135deg,#607d8b,#455a64); color:#fff; cursor:pointer;
 }
 #toolbar-math button:hover { background:linear-gradient(135deg,#78909c,#546e7a); }
+#editor.dragover { border: 2px dashed #607d8b; }
 </style>
 
 <!-- MathJax -->
@@ -184,47 +185,7 @@ onAuthStateChanged(auth, async user=>{
 window.addEventListener('hashchange',()=>{ if(auth.currentUser) navigate(); });
 
 let currentMemoId=null;
-
-/* --- Render / Edit --- */
-renderBtn.onclick = async () => {
-  originalContent = editor.innerHTML;
-
-  // YouTubeリンク変換
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = editor.innerHTML;
-  const links = tempDiv.querySelectorAll('a');
-  links.forEach(a => {
-    const yt = a.href.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/);
-    if(yt){
-      const wrap = document.createElement('div');
-      wrap.className = 'video';
-      const iframe = document.createElement('iframe');
-      iframe.src = `https://www.youtube-nocookie.com/embed/${yt[1]}?modestbranding=1&rel=0&playsinline=1`;
-      iframe.allowFullscreen = true;
-      wrap.appendChild(iframe);
-      a.replaceWith(wrap);
-    }
-  });
-
-  // Pasteした画像もそのまま表示
-  const imgs = tempDiv.querySelectorAll('img[data-src]');
-  imgs.forEach(img => { img.src = img.dataset.src; img.removeAttribute('data-src'); });
-
-  editor.innerHTML = tempDiv.innerHTML;
-
-  // MathJaxレンダリング
-  await MathJax.typesetPromise([editor]);
-  isRendered = true;
-};
-
-editBtn.onclick = () => {
-  if(isRendered){
-    editor.innerHTML = originalContent;
-    isRendered = false;
-  }
-};
-
-/* --- メモ一覧・保存・ゴミ箱・プレビュー --- */
+/* Load Memos */
 async function loadMemos(){
   memoList.innerHTML='';
   const q=query(collection(db,'users',auth.currentUser.uid,'memos'),orderBy('updated','desc'));
@@ -233,14 +194,21 @@ async function loadMemos(){
     const data=d.data();
     if(data.deletedAt) return;
     const li=document.createElement('li');
-    const titleSpan=document.createElement('span'); titleSpan.className='memo-title'; titleSpan.textContent=data.title||'Untitled';
+    const titleSpan=document.createElement('span'); 
+    titleSpan.className='memo-title'; 
+    titleSpan.textContent=data.title||'Untitled';
     li.appendChild(titleSpan);
 
-    const rightDiv=document.createElement('div'); rightDiv.className='memo-right';
-    const dateSpan=document.createElement('span'); dateSpan.className='date-span';
+    const rightDiv=document.createElement('div'); 
+    rightDiv.className='memo-right';
+    const dateSpan=document.createElement('span'); 
+    dateSpan.className='date-span';
     dateSpan.textContent=new Date(data.updated).toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
-    const menuBtn=document.createElement('button'); menuBtn.textContent='⋯'; menuBtn.className='menu-btn longpress-btn';
-    const menuPopup=document.createElement('div'); menuPopup.className='menu-popup';
+    const menuBtn=document.createElement('button'); 
+    menuBtn.textContent='⋯'; 
+    menuBtn.className='menu-btn longpress-btn';
+    const menuPopup=document.createElement('div'); 
+    menuPopup.className='menu-popup';
     const copyAction=document.createElement('button'); copyAction.textContent='Copy';
     copyAction.onclick=async(e)=>{ e.stopPropagation(); navigator.clipboard.writeText(data.content||''); showToast('Copied'); menuPopup.style.display='none'; }
     const deleteAction=document.createElement('button'); deleteAction.textContent='❌';
@@ -250,11 +218,19 @@ async function loadMemos(){
     rightDiv.append(dateSpan,menuBtn,menuPopup);
     li.appendChild(rightDiv);
 
+    /* 長押しプレビュー */
+    menuBtn.addEventListener('mousedown',()=>{ longPressTimer=setTimeout(()=>{ showPreview(d.id,data.title,data.content); },500); });
+    menuBtn.addEventListener('mouseup',()=>{ clearTimeout(longPressTimer); });
+    menuBtn.addEventListener('mouseleave',()=>{ clearTimeout(longPressTimer); });
+    menuBtn.addEventListener('touchstart',()=>{ longPressTimer=setTimeout(()=>{ showPreview(d.id,data.title,data.content); },500); });
+    menuBtn.addEventListener('touchend',()=>{ clearTimeout(longPressTimer); });
+
     li.onclick=()=>location.hash=`#/editor/${d.id}`;
     memoList.appendChild(li);
   });
 }
 
+/* Trash */
 async function loadTrash(){
   trashList.innerHTML='';
   const thirtyDaysAgo = Date.now() - 30*24*60*60*1000;
@@ -264,10 +240,14 @@ async function loadTrash(){
     const data=d.data();
     if(!data.deletedAt || data.deletedAt<thirtyDaysAgo) return;
     const li=document.createElement('li');
-    const titleSpan=document.createElement('span'); titleSpan.className='memo-title'; titleSpan.textContent=data.title||'Untitled';
+    const titleSpan=document.createElement('span'); 
+    titleSpan.className='memo-title'; 
+    titleSpan.textContent=data.title||'Untitled';
     li.appendChild(titleSpan);
-    const rightDiv=document.createElement('div'); rightDiv.className='memo-right';
-    const dateSpan=document.createElement('span'); dateSpan.className='date-span';
+    const rightDiv=document.createElement('div'); 
+    rightDiv.className='memo-right';
+    const dateSpan=document.createElement('span'); 
+    dateSpan.className='date-span';
     dateSpan.textContent=new Date(data.deletedAt).toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
     const restoreBtn=document.createElement('button'); restoreBtn.textContent='↩️';
     restoreBtn.onclick=async(e)=>{ e.stopPropagation(); await setDoc(doc(db,'users',auth.currentUser.uid,'memos',d.id),{deletedAt:null},{merge:true}); li.remove(); showToast('Restored'); }
@@ -279,19 +259,20 @@ async function loadTrash(){
   });
 }
 
+/* Editor */
 async function openEditor(id){
   currentMemoId=id;
-  editor.innerHTML = '';
+  editor.innerHTML = ''; 
   const snap=await getDoc(doc(db,'users',auth.currentUser.uid,'memos',id));
   const data=snap.data();
   titleInput.value=data.title||'';
   editor.innerHTML=data.content||'';
+  originalContent = editor.innerHTML;
   show('editor');
 }
 
 titleInput.addEventListener('input',saveMemo);
 editor.addEventListener('input',saveMemo);
-
 async function saveMemo(){
   if(!currentMemoId) return;
   let title=titleInput.value.trim();
@@ -299,15 +280,16 @@ async function saveMemo(){
   await setDoc(doc(db,'users',auth.currentUser.uid,'memos',currentMemoId),{title,content:editor.innerHTML,updated:Date.now()},{merge:true});
 }
 
-editor.addEventListener('paste', e=>{
-  e.preventDefault();
-  const range=document.getSelection().getRangeAt(0);
-  const items = e.clipboardData.items || [];
-  const files = e.clipboardData.files || [];
-
-  for(const item of items){
-    if(item.type.startsWith('image/')){
-      const file=item.getAsFile();
+/* Drag & Drop */
+editor.addEventListener('dragover', e=>{ e.preventDefault(); editor.classList.add('dragover'); });
+editor.addEventListener('dragleave', e=>{ e.preventDefault(); editor.classList.remove('dragover'); });
+editor.addEventListener('drop', e=>{
+  e.preventDefault(); 
+  editor.classList.remove('dragover'); 
+  const files = e.dataTransfer.files;
+  const range = document.getSelection().getRangeAt(0);
+  for(const file of files){
+    if(file.type.startsWith('image/')){
       const reader=new FileReader();
       reader.onload=()=>{ 
         const img=document.createElement('img'); 
@@ -316,26 +298,29 @@ editor.addEventListener('paste', e=>{
         range.collapse(false); 
         saveMemo(); 
       }
-      reader.readAsDataURL(file); return;
+      reader.readAsDataURL(file);
     }
   }
-  if(files.length>0 && files[0].type.startsWith('image/')){
-    const reader=new FileReader();
-    reader.onload=()=>{ 
-      const img=document.createElement('img'); 
-      img.dataset.src = reader.result; 
-      range.insertNode(img); 
-      range.collapse(false); 
-      saveMemo(); 
-    }
-    reader.readAsDataURL(files[0]); return;
-  }
-
-  const text = e.clipboardData.getData('text/plain');
-  range.insertNode(document.createTextNode(text)); 
-  range.collapse(false); 
-  saveMemo();
 });
+
+/* Render / Edit */
+renderBtn.onclick = async()=>{
+  if(!isRendered){
+    // YouTube変換
+    const html = editor.innerHTML.replace(/https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/g,
+      '<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/$1?modestbranding=1&rel=0&playsinline=1" allowfullscreen></iframe></div>');
+    editor.innerHTML = html;
+    await MathJax.typesetPromise([editor]);
+    isRendered = true;
+    showToast('Rendered');
+  }
+};
+
+editBtn.onclick = ()=>{
+  isRendered = false;
+  editor.innerHTML = editor.innerHTML; // 編集可能状態に戻す
+  showToast('Edit mode');
+};
 
 /* Preview */
 function showPreview(id,title,content){
@@ -360,6 +345,7 @@ async function navigate(){
   else if(hash==='#trash') { show('trash'); await loadTrash(); }
   else if(hash==='#login') show('login');
 }
+
 </script>
 </body>
 </html>
