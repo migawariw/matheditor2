@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>PowerNotes</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+body{margin:0;padding:16px;font-family:sans-serif;font-size:16px;}
+section{max-width:800px;margin:auto;position:relative;}
+[hidden]{display:none;}
+input,button{font-size:16px;margin:4px 0;}
+ul{padding-left:0;margin:0;}
+li{list-style:none;padding:8px;border-bottom:1px solid #ddd;display:flex;justify-content:space-between;align-items:center;position:relative;user-select:none;cursor:default;}
+li:hover{background:#f5f5f5;}
+li .memo-title{flex:1;white-space: nowrap;overflow:hidden;text-overflow: ellipsis;margin-right:8px;}
+.menu-btn, .longpress-btn{user-select:none;}
+#title{width:100%;font-size:20px;margin:8px 0;border:none;padding:0;box-sizing:border-box;}
+#editor{min-height:70vh;outline:none;white-space:pre-wrap;word-break:break-word;border-top:1px solid #ccc;padding-top:16px;}
+img{max-width:100%;display:block;margin:8px 0;}
+.video{position:relative;width:100%;padding-top:56.25%;margin:12px auto;}
+.video iframe{position:absolute;inset:0;width:100%;height:100%;border:0;}
+@media(max-width:768px){.video{max-width:100%;}}
+.memo-right{display:flex;align-items:center;gap:8px;}
+.date-span{font-size:0.7em;color:#666;flex-shrink:0;}
+.menu-btn{background:none;border:none;font-size:16px;cursor:pointer;}
+.menu-popup{position:absolute;top:100%;right:0;background:#fff;border:1px solid #ccc;padding:4px 0;box-shadow:0 2px 6px rgba(0,0,0,0.2);display:none;z-index:10;}
+.menu-popup button{width:100%;text-align:left;padding:4px 12px;background:none;border:none;cursor:pointer;}
+.menu-popup button:hover{background:#eee;}
+#user-icon{width:32px;height:32px;border-radius:50%;cursor:pointer;position:relative;}
+#user-menu{position:absolute;top:40px;right:0;background:#fff;border:1px solid #ccc;display:none;z-index:100;white-space:nowrap;}
+#toast{display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:#fff;padding:12px 24px;border-radius:8px;opacity:0;pointer-events:none;transition:opacity 0.3s ease;z-index:1000;}
+#toast.show{display:block;opacity:1;pointer-events:auto;}
+.preview-popup{display:none;position:fixed;background:#fff;border:1px solid #333;padding:8px;z-index:1000;max-width:80%;box-shadow:0 2px 6px rgba(0,0,0,0.3);}
+button{cursor:pointer;}
+.flex-between{display:flex;justify-content:space-between;align-items:center;}
+.longpress-btn{background:#eee;border:1px solid #ccc;padding:4px 8px;border-radius:4px;user-select:none;cursor:pointer;}
+#toolbar-math { display:flex; gap:8px; margin:8px 0; }
+#toolbar-math button {
+  padding:6px 12px; font-size:16px; border:none; border-radius:8px;
+  background:linear-gradient(135deg,#607d8b,#455a64); color:#fff; cursor:pointer;
+}
+#toolbar-math button:hover { background:linear-gradient(135deg,#78909c,#546e7a); }
+</style>
+
+<!-- MathJax -->
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$']],
+    displayMath: [['$$', '$$']],
+    processEscapes: true,
+    processEnvironments: true,
+    packages: { '[+]': ['ams','boldsymbol','physics','mhchem','html','bbox','cancel','color','unicode'] },
+    macros: { pmqty: ["\\begin{pmatrix}#1\\end{pmatrix}",1] }
+  },
+  options: { skipHtmlTags: ['script','noscript','style','textarea','pre'] },
+  chtml: { scale:1.0, matchFontHeight:true }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+</head>
+<body>
+
+<!-- Login -->
+<section id="view-login">
+  <h2>PowerNotes Login</h2>
+  <input id="email" placeholder="email"><br>
+  <input id="password" type="password" placeholder="password"><br>
+  <button id="login">Login</button>
+  <button id="signup">Sign up</button><br><br>
+  <button id="google-login">Login with Google</button>
+</section>
+
+<!-- Memo List -->
+<section id="view-list" hidden>
+  <div class="flex-between">
+    <h2>Notes</h2>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button id="new-memo">New</button>
+      <button id="go-trash">Trash</button>
+      <img id="user-icon" src="" title="User Menu">
+      <div id="user-menu">
+        <button id="switch-account">アカウント切替</button>
+        <button id="logout-btn">ログアウト</button>
+      </div>
+    </div>
+  </div>
+  <ul id="memo-list"></ul>
+</section>
+
+<!-- Trash -->
+<section id="view-trash" hidden>
+  <div class="flex-between">
+    <h2>Trash</h2>
+    <button id="back-list">← Back</button>
+  </div>
+  <ul id="trash-list"></ul>
+</section>
+
+<!-- Editor -->
+<section id="view-editor" hidden>
+  <button id="back">← Back</button>
+  <input id="title" placeholder="">
+
+  <!-- Render / Edit ボタン -->
+  <div id="toolbar-math">
+    <button id="render-btn">🔍 Render</button>
+    <button id="edit-btn">✏️ Edit</button>
+  </div>
+
+  <div id="editor" contenteditable="true"></div>
+</section>
+
+<div id="toast"></div>
+<div id="preview" class="preview-popup">
+  <div id="preview-content"></div>
+  <button id="copy-note">Copy</button>
+  <button id="delete-note">Delete</button>
+  <button id="close-preview">Close</button>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getFirestore, collection, addDoc, getDocs, doc, getDoc, setDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+/* Firebase初期化 */
+const firebaseConfig = { apiKey:"AIzaSyCdDf0GH80PoGlcbk2yjlaVQfP01Gk9m18", authDomain:"noteeditor-ba1db.firebaseapp.com", projectId:"noteeditor-ba1db" };
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+/* DOM */
+const views={login:document.getElementById('view-login'),list:document.getElementById('view-list'),trash:document.getElementById('view-trash'),editor:document.getElementById('view-editor')};
+const emailInput=document.getElementById('email');
+const passwordInput=document.getElementById('password');
+const memoList=document.getElementById('memo-list');
+const trashList=document.getElementById('trash-list');
+const editor=document.getElementById('editor');
+const titleInput=document.getElementById('title');
+const userIcon=document.getElementById('user-icon');
+const userMenu=document.getElementById('user-menu');
+const toast=document.getElementById('toast');
+const preview=document.getElementById('preview');
+const previewContent=document.getElementById('preview-content');
+const copyBtn=document.getElementById('copy-note');
+const deleteBtn=document.getElementById('delete-note');
+const closePreview=document.getElementById('close-preview');
+
+const renderBtn=document.getElementById('render-btn');
+const editBtn=document.getElementById('edit-btn');
+let isRendered=false;
+let originalContent='';
+
+/* Toast */
+function showToast(msg,d=2000){ toast.textContent=msg; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'),d); }
+function show(view){ Object.values(views).forEach(v=>v.hidden=true); views[view].hidden=false; }
+
+/* Auth */
+const provider=new GoogleAuthProvider();
+document.getElementById('login').onclick=async()=>{ try{ await signInWithEmailAndPassword(auth,emailInput.value,passwordInput.value); } catch(e){ showToast("ログイン失敗: "+e.message); } };
+document.getElementById('signup').onclick=async()=>{ try{ await createUserWithEmailAndPassword(auth,emailInput.value,passwordInput.value); } catch(e){ showToast("サインアップ失敗: "+e.message); } };
+document.getElementById('google-login').onclick=async()=>{ try{ await signInWithPopup(auth,provider); } catch(e){ showToast("Googleログイン失敗: "+e.message); } };
+userIcon.onclick=()=>{ userMenu.style.display=(userMenu.style.display==='block')?'none':'block'; }
+document.getElementById('switch-account').onclick=async()=>{ userMenu.style.display='none'; try{ await signInWithPopup(auth,provider); } catch(e){ showToast("切替失敗"); } }
+document.getElementById('logout-btn').onclick=()=>{ userMenu.style.display='none'; signOut(auth); location.hash='#login'; }
+
+/* Close menus on click outside */
+document.addEventListener('click',e=>{
+  if(!userMenu.contains(e.target) && e.target!==userIcon) userMenu.style.display='none';
+  document.querySelectorAll('.menu-popup').forEach(menu=>{
+    const btn = menu.previousSibling;
+    if(!menu.contains(e.target) && !btn.contains(e.target)) menu.style.display='none';
+  });
+});
+
+/* Auth state */
+onAuthStateChanged(auth, async user=>{
+  if(user){ if(user.photoURL) userIcon.src=user.photoURL; if(!location.hash || location.hash==='#login') location.hash = '#/list'; await navigate(); }
+  else { location.hash='#login'; show('login'); }
+});
+window.addEventListener('hashchange',()=>{ if(auth.currentUser) navigate(); });
+
+let currentMemoId=null;
+
+/* --- Render / Edit --- */
+renderBtn.onclick = async () => {
+  originalContent = editor.innerHTML;
+
+  // YouTubeリンク変換
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = editor.innerHTML;
+  const links = tempDiv.querySelectorAll('a');
+  links.forEach(a => {
+    const yt = a.href.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/);
+    if(yt){
+      const wrap = document.createElement('div');
+      wrap.className = 'video';
+      const iframe = document.createElement('iframe');
+      iframe.src = `https://www.youtube-nocookie.com/embed/${yt[1]}?modestbranding=1&rel=0&playsinline=1`;
+      iframe.allowFullscreen = true;
+      wrap.appendChild(iframe);
+      a.replaceWith(wrap);
+    }
+  });
+
+  // Pasteした画像もそのまま表示
+  const imgs = tempDiv.querySelectorAll('img[data-src]');
+  imgs.forEach(img => { img.src = img.dataset.src; img.removeAttribute('data-src'); });
+
+  editor.innerHTML = tempDiv.innerHTML;
+
+  // MathJaxレンダリング
+  await MathJax.typesetPromise([editor]);
+  isRendered = true;
+};
+
+editBtn.onclick = () => {
+  if(isRendered){
+    editor.innerHTML = originalContent;
+    isRendered = false;
+  }
+};
+
+/* --- メモ一覧・保存・ゴミ箱・プレビュー --- */
+async function loadMemos(){
+  memoList.innerHTML='';
+  const q=query(collection(db,'users',auth.currentUser.uid,'memos'),orderBy('updated','desc'));
+  const snap=await getDocs(q);
+  snap.forEach(d=>{
+    const data=d.data();
+    if(data.deletedAt) return;
+    const li=document.createElement('li');
+    const titleSpan=document.createElement('span'); titleSpan.className='memo-title'; titleSpan.textContent=data.title||'Untitled';
+    li.appendChild(titleSpan);
+
+    const rightDiv=document.createElement('div'); rightDiv.className='memo-right';
+    const dateSpan=document.createElement('span'); dateSpan.className='date-span';
+    dateSpan.textContent=new Date(data.updated).toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+    const menuBtn=document.createElement('button'); menuBtn.textContent='⋯'; menuBtn.className='menu-btn longpress-btn';
+    const menuPopup=document.createElement('div'); menuPopup.className='menu-popup';
+    const copyAction=document.createElement('button'); copyAction.textContent='Copy';
+    copyAction.onclick=async(e)=>{ e.stopPropagation(); navigator.clipboard.writeText(data.content||''); showToast('Copied'); menuPopup.style.display='none'; }
+    const deleteAction=document.createElement('button'); deleteAction.textContent='❌';
+    deleteAction.onclick=async(e)=>{ e.stopPropagation(); await setDoc(doc(db,'users',auth.currentUser.uid,'memos',d.id),{deletedAt:Date.now()},{merge:true}); li.remove(); showToast('Moved to Trash'); menuPopup.style.display='none'; }
+    menuPopup.append(copyAction,deleteAction);
+    menuBtn.onclick=(e)=>{ e.stopPropagation(); menuPopup.style.display=(menuPopup.style.display==='block')?'none':'block'; }
+    rightDiv.append(dateSpan,menuBtn,menuPopup);
+    li.appendChild(rightDiv);
+
+    li.onclick=()=>location.hash=`#/editor/${d.id}`;
+    memoList.appendChild(li);
+  });
+}
+
+async function loadTrash(){
+  trashList.innerHTML='';
+  const thirtyDaysAgo = Date.now() - 30*24*60*60*1000;
+  const q=query(collection(db,'users',auth.currentUser.uid,'memos'),orderBy('deletedAt','desc'));
+  const snap=await getDocs(q);
+  snap.forEach(d=>{
+    const data=d.data();
+    if(!data.deletedAt || data.deletedAt<thirtyDaysAgo) return;
+    const li=document.createElement('li');
+    const titleSpan=document.createElement('span'); titleSpan.className='memo-title'; titleSpan.textContent=data.title||'Untitled';
+    li.appendChild(titleSpan);
+    const rightDiv=document.createElement('div'); rightDiv.className='memo-right';
+    const dateSpan=document.createElement('span'); dateSpan.className='date-span';
+    dateSpan.textContent=new Date(data.deletedAt).toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+    const restoreBtn=document.createElement('button'); restoreBtn.textContent='↩️';
+    restoreBtn.onclick=async(e)=>{ e.stopPropagation(); await setDoc(doc(db,'users',auth.currentUser.uid,'memos',d.id),{deletedAt:null},{merge:true}); li.remove(); showToast('Restored'); }
+    const deleteBtn=document.createElement('button'); deleteBtn.textContent='Delete';
+    deleteBtn.onclick=async(e)=>{ e.stopPropagation(); await setDoc(doc(db,'users',auth.currentUser.uid,'memos',d.id),{deletedAt:Date.now()-31*24*60*60*1000},{merge:true}); li.remove(); showToast('Deleted'); }
+    rightDiv.append(dateSpan,restoreBtn,deleteBtn);
+    li.appendChild(rightDiv);
+    trashList.appendChild(li);
+  });
+}
+
+async function openEditor(id){
+  currentMemoId=id;
+  editor.innerHTML = '';
+  const snap=await getDoc(doc(db,'users',auth.currentUser.uid,'memos',id));
+  const data=snap.data();
+  titleInput.value=data.title||'';
+  editor.innerHTML=data.content||'';
+  show('editor');
+}
+
+titleInput.addEventListener('input',saveMemo);
+editor.addEventListener('input',saveMemo);
+
+async function saveMemo(){
+  if(!currentMemoId) return;
+  let title=titleInput.value.trim();
+  if(!title) title=editor.innerText.split('\n')[0].trim()||'';
+  await setDoc(doc(db,'users',auth.currentUser.uid,'memos',currentMemoId),{title,content:editor.innerHTML,updated:Date.now()},{merge:true});
+}
+
+editor.addEventListener('paste', e=>{
+  e.preventDefault();
+  const range=document.getSelection().getRangeAt(0);
+  const items = e.clipboardData.items || [];
+  const files = e.clipboardData.files || [];
+
+  for(const item of items){
+    if(item.type.startsWith('image/')){
+      const file=item.getAsFile();
+      const reader=new FileReader();
+      reader.onload=()=>{ 
+        const img=document.createElement('img'); 
+        img.dataset.src = reader.result; 
+        range.insertNode(img); 
+        range.collapse(false); 
+        saveMemo(); 
+      }
+      reader.readAsDataURL(file); return;
+    }
+  }
+  if(files.length>0 && files[0].type.startsWith('image/')){
+    const reader=new FileReader();
+    reader.onload=()=>{ 
+      const img=document.createElement('img'); 
+      img.dataset.src = reader.result; 
+      range.insertNode(img); 
+      range.collapse(false); 
+      saveMemo(); 
+    }
+    reader.readAsDataURL(files[0]); return;
+  }
+
+  const text = e.clipboardData.getData('text/plain');
+  range.insertNode(document.createTextNode(text)); 
+  range.collapse(false); 
+  saveMemo();
+});
+
+/* Preview */
+function showPreview(id,title,content){
+  previewContent.innerHTML=`<strong>${title}</strong><br>${content}`;
+  preview.style.display='block';
+  copyBtn.onclick=()=>{ navigator.clipboard.writeText(content||''); showToast('Copied'); }
+  deleteBtn.onclick=async()=>{ await setDoc(doc(db,'users',auth.currentUser.uid,'memos',id),{deletedAt:Date.now()},{merge:true}); preview.style.display='none'; loadMemos(); showToast('Moved to Trash'); }
+  closePreview.onclick=()=>preview.style.display='none';
+}
+
+/* Navigation buttons */
+document.getElementById('new-memo').onclick=async()=>{ const ref=await addDoc(collection(db,'users',auth.currentUser.uid,'memos'),{title:'',content:'',updated:Date.now(),deletedAt:null}); location.hash=`#/editor/${ref.id}`; }
+document.getElementById('go-trash').onclick=()=>{ location.hash='#/trash'; }
+document.getElementById('back-list').onclick=()=>{ location.hash='#/list'; }
+document.getElementById('back').onclick=()=>{ if(history.length>1) history.back(); else location.hash='#/list'; }
+
+/* Navigation */
+async function navigate(){
+  const hash=location.hash;
+  if(hash.startsWith('#/editor/')) { await openEditor(hash.split('/')[2]); }
+  else if(hash==='#/list' || hash==='') { show('list'); await loadMemos(); }
+  else if(hash==='#trash') { show('trash'); await loadTrash(); }
+  else if(hash==='#login') show('login');
+}
+</script>
+</body>
+</html>
